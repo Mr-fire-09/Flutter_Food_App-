@@ -19,13 +19,14 @@ class KnifeVegetableGame extends StatefulWidget {
   State<KnifeVegetableGame> createState() => _KnifeVegetableGameState();
 }
 
-class _KnifeVegetableGameState extends State<KnifeVegetableGame> {
+class _KnifeVegetableGameState extends State<KnifeVegetableGame>
+    with SingleTickerProviderStateMixin {
   double knifeX = 0;
   int score = 0;
   int highScore = 0;
   bool isGameRunning = false;
   bool isGameOver = false;
-  double speed = 0.03;
+  double speed = 0.05;
   Timer? gameTimer;
   List<double> vegPositions = [];
   List<String> vegTypes = [];
@@ -38,6 +39,8 @@ class _KnifeVegetableGameState extends State<KnifeVegetableGame> {
   bool knifeMoving = false;
   List<Offset> cutParticles = [];
   Timer? particleTimer;
+  late AnimationController _animationController;
+  double backgroundOffset = 0;
 
   @override
   void initState() {
@@ -45,6 +48,15 @@ class _KnifeVegetableGameState extends State<KnifeVegetableGame> {
     _confettiController = ConfettiController(
       duration: const Duration(seconds: 1),
     );
+    _animationController = AnimationController(
+      vsync: this,
+      duration: const Duration(seconds: 30),
+    )..repeat();
+    _animationController.addListener(() {
+      setState(() {
+        backgroundOffset = _animationController.value * 100;
+      });
+    });
   }
 
   @override
@@ -53,6 +65,7 @@ class _KnifeVegetableGameState extends State<KnifeVegetableGame> {
     comboResetTimer?.cancel();
     particleTimer?.cancel();
     _confettiController.dispose();
+    _animationController.dispose();
     super.dispose();
   }
 
@@ -62,18 +75,19 @@ class _KnifeVegetableGameState extends State<KnifeVegetableGame> {
       isGameOver = false;
       score = 0;
       lives = 3;
-      speed = 0.03;
+      speed = 0.05;
       knifeX = 0;
       vegPositions = [];
       vegTypes = [];
       isPaused = false;
+
       combo = 0;
       cutParticles = [];
     });
 
     addVegetable();
 
-    gameTimer = Timer.periodic(const Duration(milliseconds: 50), (timer) {
+    gameTimer = Timer.periodic(const Duration(milliseconds: 16), (timer) {
       if (!isGameRunning || isPaused) return;
 
       setState(() {
@@ -149,8 +163,7 @@ class _KnifeVegetableGameState extends State<KnifeVegetableGame> {
       });
     });
 
-    // Particle animation timer
-    particleTimer = Timer.periodic(const Duration(milliseconds: 50), (timer) {
+    particleTimer = Timer.periodic(const Duration(milliseconds: 16), (timer) {
       if (!isGameRunning || isPaused) return;
       setState(() {});
     });
@@ -159,9 +172,7 @@ class _KnifeVegetableGameState extends State<KnifeVegetableGame> {
   void addVegetable() {
     final random = Random();
     vegPositions.add(random.nextDouble() * 2 - 1);
-    vegPositions.add(
-      -0.2 - random.nextDouble() * 0.3,
-    ); // Stagger starting positions
+    vegPositions.add(-0.2 - random.nextDouble() * 0.3);
     final types = [
       'carrot',
       'tomato',
@@ -283,8 +294,10 @@ class _KnifeVegetableGameState extends State<KnifeVegetableGame> {
       isPaused = !isPaused;
       if (isPaused) {
         gameTimer?.cancel();
+        _animationController.stop();
       } else {
         startGame();
+        _animationController.repeat();
       }
     });
   }
@@ -296,12 +309,9 @@ class _KnifeVegetableGameState extends State<KnifeVegetableGame> {
       knifeX += direction * 0.2;
       knifeX = knifeX.clamp(-1.0, 1.0);
       knifeMoving = true;
-
-      // Add a little tilt animation when moving
       knifeAngle = -pi / 4 + direction * 0.1;
     });
 
-    // Reset knife angle after movement
     Future.delayed(const Duration(milliseconds: 200), () {
       if (mounted) {
         setState(() {
@@ -351,13 +361,16 @@ class _KnifeVegetableGameState extends State<KnifeVegetableGame> {
         color = Colors.red;
     }
 
-    return Icon(icon, size: size, color: color);
+    return Transform.translate(
+      offset: Offset(0, -10),
+      child: Icon(icon, size: size, color: color),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.green[50],
+      backgroundColor: Colors.lightGreen[50],
       appBar: AppBar(
         title: const Text(
           "🥕 Veggie Cutter 🍅",
@@ -380,19 +393,33 @@ class _KnifeVegetableGameState extends State<KnifeVegetableGame> {
       ),
       body: Stack(
         children: [
-          // Background pattern
+          // Animated background
           Positioned.fill(
             child: Container(
               decoration: BoxDecoration(
-                image: DecorationImage(
-                  image: const AssetImage(
-                    'assets/wood_texture.jpg',
-                  ), // You'd need to add this asset
-                  fit: BoxFit.cover,
-                  colorFilter: ColorFilter.mode(
-                    Colors.green[50]!.withOpacity(0.2),
-                    BlendMode.dstOver,
-                  ),
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [
+                    Colors.lightGreen[100]!,
+                    Colors.lightGreen[50]!,
+                    Colors.lightGreen[100]!,
+                  ],
+                ),
+              ),
+            ),
+          ),
+
+          // Subtle pattern overlay
+          Positioned.fill(
+            child: Opacity(
+              opacity: 0.05,
+              child: Transform.translate(
+                offset: Offset(backgroundOffset, 0),
+                child: Image.asset(
+                  'assets/veggie_pattern.png', // You can create this asset
+                  repeat: ImageRepeat.repeat,
+                  fit: BoxFit.none,
                 ),
               ),
             ),
@@ -438,7 +465,8 @@ class _KnifeVegetableGameState extends State<KnifeVegetableGame> {
                     children: [
                       _buildScoreCard("SCORE", "$score", Colors.green),
                       if (combo > 0)
-                        Container(
+                        AnimatedContainer(
+                          duration: const Duration(milliseconds: 300),
                           padding: const EdgeInsets.symmetric(
                             horizontal: 12,
                             vertical: 4,
@@ -471,13 +499,21 @@ class _KnifeVegetableGameState extends State<KnifeVegetableGame> {
               Expanded(
                 child: Stack(
                   children: [
-                    // Cutting board
+                    // Cutting board with shine effect
                     Center(
                       child: Container(
                         width: MediaQuery.of(context).size.width * 0.9,
                         height: MediaQuery.of(context).size.height * 0.6,
                         decoration: BoxDecoration(
-                          color: const Color(0xFF8B4513), // Wooden color
+                          gradient: LinearGradient(
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                            colors: [
+                              const Color(0xFFA67C52),
+                              const Color(0xFF8B4513),
+                              const Color(0xFF5D2906),
+                            ],
+                          ),
                           borderRadius: BorderRadius.circular(10),
                           boxShadow: [
                             BoxShadow(
@@ -485,6 +521,12 @@ class _KnifeVegetableGameState extends State<KnifeVegetableGame> {
                               blurRadius: 10,
                               spreadRadius: 3,
                               offset: const Offset(0, 5),
+                            ),
+                            BoxShadow(
+                              color: Colors.white.withOpacity(0.2),
+                              blurRadius: 5,
+                              spreadRadius: 1,
+                              offset: const Offset(-2, -2),
                             ),
                           ],
                           border: Border.all(
@@ -495,10 +537,11 @@ class _KnifeVegetableGameState extends State<KnifeVegetableGame> {
                       ),
                     ),
 
-                    // Vegetables
+                    // Vegetables with smooth animations
                     for (int i = 0; i < vegPositions.length; i += 2)
                       AnimatedPositioned(
-                        duration: const Duration(milliseconds: 50),
+                        duration: const Duration(milliseconds: 16),
+                        curve: Curves.easeOut,
                         left:
                             (vegPositions[i] + 1) *
                                 MediaQuery.of(context).size.width /
@@ -511,12 +554,13 @@ class _KnifeVegetableGameState extends State<KnifeVegetableGame> {
                             20,
                         child: Column(
                           children: [
-                            // Shadow
-                            Container(
+                            // Shadow with animation
+                            AnimatedContainer(
+                              duration: const Duration(milliseconds: 100),
                               width: 30,
                               height: 10,
                               decoration: BoxDecoration(
-                                shape: BoxShape.circle,
+                                shape: BoxShape.rectangle,
                                 boxShadow: [
                                   BoxShadow(
                                     color: Colors.black.withOpacity(0.3),
@@ -526,7 +570,19 @@ class _KnifeVegetableGameState extends State<KnifeVegetableGame> {
                                 ],
                               ),
                             ),
-                            getVegetableIcon(vegTypes[i ~/ 2]),
+                            // Vegetable with slight bounce
+                            AnimatedContainer(
+                              duration: const Duration(milliseconds: 100),
+                              transform:
+                                  Matrix4.identity()..translate(
+                                    0.0,
+                                    (vegPositions[i + 1] >= 0.7 &&
+                                            vegPositions[i + 1] <= 0.8)
+                                        ? -5.0
+                                        : 0.0,
+                                  ),
+                              child: getVegetableIcon(vegTypes[i ~/ 2]),
+                            ),
                           ],
                         ),
                       ),
@@ -544,30 +600,35 @@ class _KnifeVegetableGameState extends State<KnifeVegetableGame> {
                                 MediaQuery.of(context).size.height /
                                 2 -
                             5,
-                        child: Container(
-                          width: 10,
-                          height: 10,
-                          decoration: BoxDecoration(
-                            color: Colors.green[700],
-                            shape: BoxShape.circle,
+                        child: Transform.rotate(
+                          angle: Random().nextDouble() * pi * 2,
+                          child: AnimatedContainer(
+                            duration: const Duration(milliseconds: 100),
+                            width: 8 + Random().nextDouble() * 4,
+                            height: 8 + Random().nextDouble() * 4,
+                            decoration: BoxDecoration(
+                              color: Colors.green[700]!.withOpacity(0.8),
+                              borderRadius: BorderRadius.circular(2),
+                            ),
                           ),
                         ),
                       ),
 
-                    // Knife
+                    // Knife with smooth movement
                     Align(
                       alignment: Alignment(knifeX, 0.85),
-                      child: Transform.rotate(
-                        angle: knifeAngle,
+                      child: AnimatedRotation(
+                        duration: const Duration(milliseconds: 200),
+                        turns: knifeAngle / (2 * pi),
                         child: AnimatedContainer(
                           duration: const Duration(milliseconds: 200),
                           transform:
                               Matrix4.identity()
-                                ..translate(0.0, knifeMoving ? -5.0 : 0.0),
+                                ..translate(0.0, knifeMoving ? -10.0 : 0.0),
                           child: const Icon(
-                            Icons.restaurant,
+                            Icons.cut,
                             size: 70,
-                            color: Colors.blueGrey,
+                            color: Colors.grey,
                             shadows: [
                               Shadow(
                                 color: Colors.black,
@@ -583,7 +644,8 @@ class _KnifeVegetableGameState extends State<KnifeVegetableGame> {
                     // Start screen
                     if (!isGameRunning && !isGameOver)
                       Center(
-                        child: Container(
+                        child: AnimatedContainer(
+                          duration: const Duration(milliseconds: 500),
                           padding: const EdgeInsets.all(30),
                           decoration: BoxDecoration(
                             color: Colors.white.withOpacity(0.9),
@@ -670,13 +732,17 @@ class _KnifeVegetableGameState extends State<KnifeVegetableGame> {
                     if (isPaused)
                       Container(
                         color: Colors.black54,
-                        child: const Center(
+                        child: Center(
                           child: Column(
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              Icon(Icons.pause, size: 80, color: Colors.white),
-                              SizedBox(height: 20),
-                              Text(
+                              const Icon(
+                                Icons.pause,
+                                size: 80,
+                                color: Colors.white,
+                              ),
+                              const SizedBox(height: 20),
+                              const Text(
                                 "PAUSED",
                                 style: TextStyle(
                                   fontSize: 48,
@@ -691,8 +757,8 @@ class _KnifeVegetableGameState extends State<KnifeVegetableGame> {
                                   ],
                                 ),
                               ),
-                              SizedBox(height: 10),
-                              Text(
+                              const SizedBox(height: 10),
+                              const Text(
                                 "Tap the play button to continue",
                                 style: TextStyle(
                                   fontSize: 18,
@@ -707,7 +773,7 @@ class _KnifeVegetableGameState extends State<KnifeVegetableGame> {
                 ),
               ),
 
-              // Controls
+              // Controls with touch feedback
               Container(
                 margin: const EdgeInsets.all(16),
                 padding: const EdgeInsets.symmetric(vertical: 10),
@@ -765,13 +831,15 @@ class _KnifeVegetableGameState extends State<KnifeVegetableGame> {
   Widget _buildControlButton(IconData icon, VoidCallback onPressed) {
     return GestureDetector(
       onTapDown: (_) => onPressed(),
-      onTapUp: (_) => setState(() {}),
-      onTapCancel: () => setState(() {}),
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 100),
         padding: const EdgeInsets.all(20),
         decoration: BoxDecoration(
-          color: Colors.green,
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [Colors.green[400]!, Colors.green[700]!],
+          ),
           shape: BoxShape.circle,
           boxShadow: [
             BoxShadow(
